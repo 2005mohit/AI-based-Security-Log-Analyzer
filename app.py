@@ -2,7 +2,8 @@
 
 import streamlit as st
 import pandas as pd
-import faiss
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 import json
 import os
 import sys
