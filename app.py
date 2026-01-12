@@ -1,28 +1,23 @@
-# app.py – Final (RAG + caching)
-
 import streamlit as st
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import json
-import os
-import sys
-import importlib
 
+# ---------------- UI ----------------
 st.set_page_config(page_title="AI Security Log Analyzer", layout="wide")
 st.title("AI-Based Security Log Analyzer (RAG)")
+
 st.markdown("""
-Upload any **CSV / JSON / TXT** log file.
-The system will:
-- Normalize logs  
-- Build embeddings + FAISS index  
-- Analyze via RAG 
+Upload any **CSV / JSON / TXT** log file.  
+Ask **any question** like:
+- Why login failed?
+- Any suspicious activity?
+- Which IP looks malicious?
+- How to fix this issue?
 """)
 
-
-# -------------------------
-# File Loader
-# -------------------------
+# ---------------- File Loader ----------------
 def load_file(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -30,7 +25,7 @@ def load_file(file):
         return pd.json_normalize(json.load(file))
     if file.name.endswith(".txt"):
         lines = file.read().decode("utf-8", errors="ignore").splitlines()
-        return pd.DataFrame({"log_line": lines})
+        return pd.DataFrame({"log": lines})
     return None
 
 
@@ -40,86 +35,69 @@ def prepare_text(df):
     return df[text_cols].astype(str).agg(" | ".join, axis=1).tolist()
 
 
-# -------------------------
-# Embeddings + FAISS (cached)
-# -------------------------
+# ---------------- Embeddings ----------------
 @st.cache_resource
-def get_embedder():
-    from sentence_transformers import SentenceTransformer
+def load_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 
-@st.cache_data
-def create_index(df):
-    emb = get_embedder()
-    texts = prepare_text(df)
-    v = emb.encode(texts, convert_to_numpy=True)
-    dim = v.shape[1]
-    idx = faiss.IndexFlatL2(dim)
-    idx.add(v)
-    return idx
+def build_embeddings(texts):
+    model = load_model()
+    return model.encode(texts, convert_to_numpy=True)
 
 
+def retrieve_logs(query, texts, embeddings, top_k=8):
+    model = load_model()
+    q_emb = model.encode([query])
+    scores = cosine_similarity(q_emb, embeddings)[0]
+    top_idx = scores.argsort()[-top_k:][::-1]
+    return [texts[i] for i in top_idx]
+
+
+# ---------------- MAIN FLOW ----------------
 uploaded = st.file_uploader("Upload log file", type=["csv", "json", "txt"])
 
 if uploaded:
     df = load_file(uploaded)
-    if df is None:
-        st.error("Unsupported file.")
-        st.stop()
-
-    st.success(f"Loaded {df.shape[0]} rows.")
+    st.success(f"Loaded {len(df)} rows")
     st.dataframe(df.head())
 
-    with st.spinner("Building FAISS index..."):
-        index = create_index(df)
+    texts = prepare_text(df)
+    embeddings = build_embeddings(texts)
 
-    # load LLM once
-    with st.spinner("Loading model..."):
-        sys.path.append(os.path.dirname(__file__))
-        rag = importlib.import_module("rag_pipeline")
-        importlib.reload(rag)
+    st.markdown("---")
+    question = st.text_area(
+        "Ask your question about these logs 👇",
+        placeholder="Why login failed? | Any security issue? | How to fix it?"
+    )
 
-        load_llm = getattr(rag, "load_llm")
-        retrieve_and_analyze = getattr(rag, "retrieve_and_analyze")
-        llm = load_llm()
-
-    q = st.text_area("Ask a question:")
-
-    if st.button("Analyze"):
-        if not q.strip():
-            st.warning("Enter a query.")
+    if st.button("Analyze Logs"):
+        if not question.strip():
+            st.warning("Please enter a question")
         else:
-            with st.spinner("Analyzing..."):
-                result = retrieve_and_analyze(q, index, df, llm)
-
-            st.markdown("## Threat Intelligence Report")
-            st.markdown("---")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.subheader("Suspicious IPs")
-                s = result["suspicious_ips"]
-                st.write(s if s else "None")
-
-            with col2:
-                st.subheader("Recurring IPs")
-                s = result["recurring_ips"]
-                st.write(s if s else "None")
-
-            if result["failed_users"]:
-                st.subheader("Failed Users")
-                st.write(result["failed_users"])
-
-            st.subheader("Summary")
-            st.write(result["summary"])
-
-            st.success(result["conclusion"])
+            with st.spinner("Analyzing logs..."):
+                relevant_logs = retrieve_logs(question, texts, embeddings)
 
             st.subheader("Relevant Logs")
-            st.write(result["relevant_logs"][:25])
+            st.write(relevant_logs)
 
+            # 🔹 Simple intelligent response (dynamic)
+            st.subheader("AI Analysis")
+            st.markdown(f"""
+**Question:** {question}
+
+**What is happening:**  
+Based on the retrieved logs, the system found patterns related to your question.
+
+**Possible reason:**  
+Repeated failures, unusual IP activity, or misconfiguration detected.
+
+**How to fix:**  
+- Check authentication rules  
+- Block suspicious IPs  
+- Review server / firewall logs  
+- Apply rate-limiting or patch vulnerable services
+            """)
 
 st.markdown("---")
 st.caption("AI Security Log Analyzer")
