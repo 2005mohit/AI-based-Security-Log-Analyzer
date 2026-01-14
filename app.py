@@ -4,20 +4,19 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import json
 
-# ---------------- UI ----------------
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Security Log Analyzer", layout="wide")
 st.title("AI-Based Security Log Analyzer (RAG)")
 
-st.markdown("""
-Upload any **CSV / JSON / TXT** log file.  
-Ask **any question** like:
-- Why login failed?
-- Any suspicious activity?
-- Which IP looks malicious?
-- How to fix this issue?
-""")
+# ---------------- SESSION STATE ----------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# ---------------- File Loader ----------------
+if "texts" not in st.session_state:
+    st.session_state.texts = None
+    st.session_state.embeddings = None
+
+# ---------------- FILE LOADER ----------------
 def load_file(file):
     if file.name.endswith(".csv"):
         return pd.read_csv(file)
@@ -35,7 +34,7 @@ def prepare_text(df):
     return df[text_cols].astype(str).agg(" | ".join, axis=1).tolist()
 
 
-# ---------------- Embeddings ----------------
+# ---------------- EMBEDDINGS ----------------
 @st.cache_resource
 def load_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
@@ -54,50 +53,76 @@ def retrieve_logs(query, texts, embeddings, top_k=8):
     return [texts[i] for i in top_idx]
 
 
-# ---------------- MAIN FLOW ----------------
-uploaded = st.file_uploader("Upload log file", type=["csv", "json", "txt"])
-
-if uploaded:
-    df = load_file(uploaded)
-    st.success(f"Loaded {len(df)} rows")
-    st.dataframe(df.head())
-
-    texts = prepare_text(df)
-    embeddings = build_embeddings(texts)
-
-    st.markdown("---")
-    question = st.text_area(
-        "Ask your question about these logs 👇",
-        placeholder="Why login failed? | Any security issue? | How to fix it?"
+# ---------------- SIDEBAR (FILE UPLOAD) ----------------
+with st.sidebar:
+    st.subheader("Upload Logs")
+    uploaded = st.file_uploader(
+        "Upload CSV / JSON / TXT",
+        type=["csv", "json", "txt"]
     )
 
-    if st.button("Analyze Logs"):
-        if not question.strip():
-            st.warning("Please enter a question")
-        else:
+    if uploaded:
+        df = load_file(uploaded)
+        st.success(f"Loaded {len(df)} rows")
+
+        texts = prepare_text(df)
+        embeddings = build_embeddings(texts)
+
+        st.session_state.texts = texts
+        st.session_state.embeddings = embeddings
+
+
+# ---------------- CHAT HISTORY DISPLAY ----------------
+for chat in st.session_state.chat_history:
+    with st.chat_message("user"):
+        st.markdown(chat["question"])
+
+    with st.chat_message("assistant"):
+        st.markdown(chat["answer"])
+
+
+# ---------------- CHAT INPUT (BOTTOM) ----------------
+user_question = st.chat_input("Ask about suspicious activity, attacks, fixes...")
+
+if user_question:
+    if not st.session_state.texts:
+        st.warning("Please upload a log file first")
+    else:
+        with st.chat_message("user"):
+            st.markdown(user_question)
+
+        with st.chat_message("assistant"):
             with st.spinner("Analyzing logs..."):
-                relevant_logs = retrieve_logs(question, texts, embeddings)
+                relevant_logs = retrieve_logs(
+                    user_question,
+                    st.session_state.texts,
+                    st.session_state.embeddings
+                )
 
-            st.subheader("Relevant Logs")
-            st.write(relevant_logs)
-
-            # 🔹 Simple intelligent response (dynamic)
-            st.subheader("AI Analysis")
-            st.markdown(f"""
-**Question:** {question}
+            answer = f"""
+### 🔍 Analysis Result
 
 **What is happening:**  
-Based on the retrieved logs, the system found patterns related to your question.
+Suspicious or unusual patterns were found based on your query.
+
+**Evidence from logs:**  
+{relevant_logs[:3]}
 
 **Possible reason:**  
-Repeated failures, unusual IP activity, or misconfiguration detected.
+- Repeated failures  
+- Abnormal access pattern  
+- Misconfiguration or attack attempt  
 
 **How to fix:**  
-- Check authentication rules  
+- Enable account lockout  
 - Block suspicious IPs  
-- Review server / firewall logs  
-- Apply rate-limiting or patch vulnerable services
-            """)
+- Apply rate-limiting  
+- Review firewall & authentication rules
+            """
 
-st.markdown("---")
-st.caption("AI Security Log Analyzer")
+            st.markdown(answer)
+
+        st.session_state.chat_history.append({
+            "question": user_question,
+            "answer": answer
+        })
