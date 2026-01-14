@@ -54,7 +54,7 @@ def retrieve_logs(query, texts, embeddings, top_k=8):
     return [texts[i] for i in top_idx]
 
 
-# ---------------- ISSUE ANALYSIS HELPERS (NEW) ----------------
+# ---------------- ISSUE ANALYSIS HELPERS ----------------
 def detect_issue_type(logs):
     text = " ".join(logs).lower()
 
@@ -100,6 +100,29 @@ def get_fix(issue):
     return ["Monitor the system and review logs regularly"]
 
 
+# ---------------- IP ANALYSIS (NEW – FOR QUESTION 2) ----------------
+def extract_malicious_ips(logs):
+    ip_reasons = {}
+
+    for log in logs:
+        parts = log.split("|")
+        if len(parts) < 6:
+            continue
+
+        ip = parts[2].strip()
+        event = parts[3].strip().lower()
+        details = parts[5].lower()
+
+        if "network_scan" in event:
+            ip_reasons[ip] = "Detected network scanning activity"
+        elif "suspicious location" in details or "unknown location" in details:
+            ip_reasons[ip] = "Login attempt from a suspicious location"
+        elif "account locked" in details:
+            ip_reasons[ip] = "Account locked after repeated failed logins"
+
+    return ip_reasons
+
+
 # ---------------- SIDEBAR (UPLOAD) ----------------
 with st.sidebar:
     st.subheader("Upload Log File")
@@ -128,7 +151,7 @@ for chat in st.session_state.chat_history:
 
 
 # ---------------- CHAT INPUT ----------------
-user_question = st.chat_input("Ask about suspicious activity, attacks, or fixes...")
+user_question = st.chat_input("Ask about suspicious activity, IPs, or fixes...")
 
 if user_question:
     if not st.session_state.texts:
@@ -145,11 +168,31 @@ if user_question:
                     st.session_state.embeddings
                 )
 
-            issue_summary = detect_issue_type(relevant_logs)
-            reason = get_reason(issue_summary)
-            fixes = get_fix(issue_summary)
+            # -------- IP INTENT HANDLING --------
+            if "ip" in user_question.lower():
+                ip_map = extract_malicious_ips(relevant_logs)
 
-            answer = f"""
+                if not ip_map:
+                    answer = "No clearly malicious IP addresses were identified."
+                else:
+                    lines = [
+                        f"- **{ip}**: {reason}"
+                        for ip, reason in ip_map.items()
+                    ]
+
+                    answer = f"""
+### 🔍 Malicious IP Analysis
+
+The following IP addresses appear suspicious:
+
+{chr(10).join(lines)}
+                    """
+            else:
+                issue_summary = detect_issue_type(relevant_logs)
+                reason = get_reason(issue_summary)
+                fixes = get_fix(issue_summary)
+
+                answer = f"""
 ### 🔍 Analysis Result
 
 **What happened (Simple):**  
@@ -164,7 +207,7 @@ if user_question:
 **How to fix:**  
 - {fixes[0]}
 - {fixes[1] if len(fixes) > 1 else ""}
-            """
+                """
 
             st.markdown(answer)
 
