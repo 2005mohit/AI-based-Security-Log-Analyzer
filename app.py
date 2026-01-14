@@ -16,6 +16,7 @@ if "texts" not in st.session_state:
     st.session_state.texts = None
     st.session_state.embeddings = None
 
+
 # ---------------- FILE LOADER ----------------
 def load_file(file):
     if file.name.endswith(".csv"):
@@ -34,7 +35,7 @@ def prepare_text(df):
     return df[text_cols].astype(str).agg(" | ".join, axis=1).tolist()
 
 
-# ---------------- EMBEDDINGS ----------------
+# ---------------- EMBEDDINGS (UNCHANGED) ----------------
 @st.cache_resource
 def load_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
@@ -53,9 +54,55 @@ def retrieve_logs(query, texts, embeddings, top_k=8):
     return [texts[i] for i in top_idx]
 
 
-# ---------------- SIDEBAR (FILE UPLOAD) ----------------
+# ---------------- ISSUE ANALYSIS HELPERS (NEW) ----------------
+def detect_issue_type(logs):
+    text = " ".join(logs).lower()
+
+    if "network_scan" in text:
+        return "Network scanning activity was detected."
+    if "file_access" in text:
+        return "Someone tried to access files without permission."
+    if "account locked" in text:
+        return "An account was locked after multiple failed login attempts."
+    if "login | failed" in text:
+        return "Repeated failed login attempts were detected."
+    return "Unusual system activity was detected."
+
+
+def get_reason(issue):
+    issue = issue.lower()
+    if "network" in issue:
+        return "A system was scanning the network to find open ports or weaknesses."
+    if "file" in issue:
+        return "The user did not have permission to access the requested files."
+    if "login" in issue:
+        return "Wrong passwords were entered multiple times in a short period."
+    return "The activity does not match normal system behavior."
+
+
+def get_fix(issue):
+    issue = issue.lower()
+    if "login" in issue:
+        return [
+            "Enable account lockout and multi-factor authentication",
+            "Add CAPTCHA to the login page"
+        ]
+    if "file" in issue:
+        return [
+            "Review file permissions",
+            "Apply role-based access control"
+        ]
+    if "network" in issue:
+        return [
+            "Block the IP address using firewall rules",
+            "Enable IDS/IPS monitoring"
+        ]
+    return ["Monitor the system and review logs regularly"]
+
+
+# ---------------- SIDEBAR (UPLOAD) ----------------
 with st.sidebar:
-    st.subheader("Upload Logs")
+    st.subheader("Upload Log File")
     uploaded = st.file_uploader(
         "Upload CSV / JSON / TXT",
         type=["csv", "json", "txt"]
@@ -72,21 +119,20 @@ with st.sidebar:
         st.session_state.embeddings = embeddings
 
 
-# ---------------- CHAT HISTORY DISPLAY ----------------
+# ---------------- CHAT HISTORY ----------------
 for chat in st.session_state.chat_history:
     with st.chat_message("user"):
         st.markdown(chat["question"])
-
     with st.chat_message("assistant"):
         st.markdown(chat["answer"])
 
 
-# ---------------- CHAT INPUT (BOTTOM) ----------------
-user_question = st.chat_input("Ask about suspicious activity, attacks, fixes...")
+# ---------------- CHAT INPUT ----------------
+user_question = st.chat_input("Ask about suspicious activity, attacks, or fixes...")
 
 if user_question:
     if not st.session_state.texts:
-        st.warning("Please upload a log file first")
+        st.warning("Please upload a log file first.")
     else:
         with st.chat_message("user"):
             st.markdown(user_question)
@@ -99,25 +145,25 @@ if user_question:
                     st.session_state.embeddings
                 )
 
+            issue_summary = detect_issue_type(relevant_logs)
+            reason = get_reason(issue_summary)
+            fixes = get_fix(issue_summary)
+
             answer = f"""
 ### 🔍 Analysis Result
 
-**What is happening:**  
-Suspicious or unusual patterns were found based on your query.
+**What happened (Simple):**  
+{issue_summary}
+
+**Why it happened:**  
+{reason}
 
 **Evidence from logs:**  
 {relevant_logs[:3]}
 
-**Possible reason:**  
-- Repeated failures  
-- Abnormal access pattern  
-- Misconfiguration or attack attempt  
-
 **How to fix:**  
-- Enable account lockout  
-- Block suspicious IPs  
-- Apply rate-limiting  
-- Review firewall & authentication rules
+- {fixes[0]}
+- {fixes[1] if len(fixes) > 1 else ""}
             """
 
             st.markdown(answer)
