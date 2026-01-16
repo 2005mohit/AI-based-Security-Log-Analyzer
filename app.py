@@ -182,12 +182,33 @@ if user_question:
             elif intent == "attack_type":
                 answer = f"""### 🤖 Attack Classification
 **Assessment:** {classify_attack(flags)}
-**Basis:** Determined from behavior patterns observed in the logs (e.g., scanning vs. user actions)."""
+**Explanation:** The classification is based on behavioral patterns such as systematic scanning and repeated automated actions observed in the logs."""
 
             elif intent == "risk":
+                risk_level = assign_risk(flags)
+                reasons = []
+
+                if flags["network_scan"]:
+                    reasons.append("continuous network scanning activity")
+                if flags["failed_login"]:
+                    reasons.append("repeated failed authentication attempts")
+                if flags["account_locked"]:
+                    reasons.append("account lock events due to unauthorized access attempts")
+
+                explanation = (
+                    "; ".join(reasons)
+                    if reasons
+                    else "no strong malicious indicators beyond minor anomalies"
+                )
+
                 answer = f"""### ⚠️ Risk Assessment
-**Risk Level:** {assign_risk(flags)}
-**Explanation:** Sustained or combined suspicious behaviors increase the likelihood of compromise."""
+
+**Risk Level:** {risk_level}
+
+**Explanation:**  
+The risk is assessed as **{risk_level}** because the logs show {explanation}.  
+If this behavior continues over an extended period, it increases the likelihood of system compromise or service disruption.
+"""
 
             elif intent == "reason":
                 answer = f"""### ❓ Root Cause
@@ -200,11 +221,21 @@ if user_question:
 
             elif intent == "correlation":
                 answer = """### 🔗 Campaign Correlation
-Based on available evidence, the activities may be related, but there is insufficient data to conclusively confirm a single coordinated campaign."""
+The activities may be related based on timing and behavior patterns; however, the available evidence is not sufficient to conclusively confirm a single coordinated attack campaign."""
 
             elif intent == "summary":
+                details = []
+                if flags["network_scan"]:
+                    details.append("network scanning behavior")
+                if flags["failed_login"]:
+                    details.append("repeated failed login attempts")
+                if flags["file_access"]:
+                    details.append("unauthorized file access attempts")
+
+                summary_text = ", ".join(details) if details else "unusual system activity"
+
                 answer = f"""### 📄 Summary
-Suspicious activity was identified in the uploaded logs, including behaviors that deviate from normal patterns."""
+Suspicious activity was detected in the uploaded logs, including {summary_text}, which deviates from normal system behavior."""
 
             else:
                 answer = f"""### 🔍 Analysis Result
