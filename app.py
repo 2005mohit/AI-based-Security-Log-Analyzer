@@ -48,23 +48,40 @@ def retrieve_logs(query, texts, embeddings, top_k=8):
     top_idx = scores.argsort()[-top_k:][::-1]
     return [texts[i] for i in top_idx]
 
-# ================= INTENT DETECTION =================
+# ================= INTENT DETECTION (UPDATED) =================
 def detect_intent(question: str) -> str:
     q = question.lower()
+
     if any(k in q for k in ["ip", "address"]):
         return "ip"
+
     if any(k in q for k in ["human", "automated", "bot"]):
         return "attack_type"
+
     if any(k in q for k in ["risk", "severity", "24 hours", "continue"]):
         return "risk"
+
     if any(k in q for k in ["why", "reason"]):
         return "reason"
+
     if any(k in q for k in ["fix", "mitigation", "solution", "what should i do"]):
         return "fix"
-    if any(k in q for k in ["same campaign", "related"]):
+
+    # 🔥 CORRELATION FIX HERE
+    if any(k in q for k in [
+        "same campaign",
+        "same attack",
+        "related",
+        "connected",
+        "linked",
+        "part of",
+        "coordinated"
+    ]):
         return "correlation"
+
     if any(k in q for k in ["what happened", "summary", "analyze"]):
         return "summary"
+
     return "general"
 
 # ================= ANALYSIS HELPERS =================
