@@ -1,5 +1,7 @@
 #  AI-Based Security Log Analyzer (RAG)
 
+![Dashboard View](ai based log analyzer (DashboardView.png))
+
 An **AI-powered Security Log Analysis web application** that uses **Retrieval-Augmented Generation (RAG)** to analyze security logs and generate meaningful threat intelligence using natural language queries.
 
 This project demonstrates how **LLMs + vector search** can be applied to cybersecurity log analysis in a practical, deployable system.
