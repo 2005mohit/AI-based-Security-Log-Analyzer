@@ -1,6 +1,6 @@
 #  AI-Based Security Log Analyzer (RAG)
 
-![Dashboard View](ai based log analyzer (DashboardView.png))
+![Dashboard View](ai based log analyzer (DashboardView.png).png)
 
 An **AI-powered Security Log Analysis web application** that uses **Retrieval-Augmented Generation (RAG)** to analyze security logs and generate meaningful threat intelligence using natural language queries.
 
